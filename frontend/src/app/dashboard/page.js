@@ -29,14 +29,24 @@ export default function Dashboard() {
 
             if (role === "hr") {
                 if (!contractAddress) {
-                    const deployNew = confirm("No Contract Found. Deploy a new PayStream Contract?");
-                    if (deployNew) {
+                    const hasExisting = confirm("Do you have an existing PayStream contract? \n\nClick OK to enter address.\nClick Cancel to deploy a new one.");
+
+                    if (hasExisting) {
+                        const addr = prompt("Enter your PayStream Contract Address:");
+                        if (!addr || !ethers.isAddress(addr)) {
+                            alert("Invalid address provided.");
+                            setConnecting(false);
+                            return;
+                        }
+                        contractAddress = addr;
+                    } else {
+                        // Deploy New
                         try {
                             const newAddress = await createOrganization(signer);
                             if (newAddress) {
-                                localStorage.setItem("paystream_master", newAddress);
-                                localStorage.setItem("paystream_org", newAddress);
-                                router.push("/dashboard/hr");
+                                contractAddress = newAddress;
+                            } else {
+                                setConnecting(false);
                                 return;
                             }
                         } catch (e) {
@@ -44,25 +54,40 @@ export default function Dashboard() {
                             setConnecting(false);
                             return;
                         }
-                    } else {
-                        setConnecting(false);
-                        return;
                     }
-                } else {
-                    // Check ownership for HR
+                }
+
+                // Verify Ownership logic (runs for both existing and newly deployed)
+                if (contractAddress) {
                     try {
                         const contract = getContract(signer, contractAddress);
-                        const owner = await contract.owner();
-                        if (owner.toLowerCase() !== userAddress.toLowerCase()) {
-                            alert("You are not the owner of the current contract!");
+                        // Check if contract code exists
+                        const code = await provider.getCode(contractAddress);
+                        if (code === "0x") {
+                            alert("No contract found at this address on HeLa Testnet!");
                             setConnecting(false);
                             return;
                         }
+
+                        const owner = await contract.owner();
+                        if (owner.toLowerCase() !== userAddress.toLowerCase()) {
+                            alert("⛔ Access Denied: You are not the owner of this contract.\n\nOnly the wallet that deployed/owns the PayStream contract can access the HR Dashboard.");
+                            setConnecting(false);
+                            return;
+                        }
+
+                        // Success
+                        localStorage.setItem("paystream_master", contractAddress);
+                        localStorage.setItem("paystream_org", contractAddress);
+                        router.push("/dashboard/hr");
+                        return;
+
                     } catch (e) {
                         console.error("Owner check failed", e);
+                        alert("Failed to verify contract ownership. Please check the address and network.");
+                        setConnecting(false);
+                        return;
                     }
-                    localStorage.setItem("paystream_org", contractAddress);
-                    router.push("/dashboard/hr");
                 }
             } else {
                 // Employee Flow

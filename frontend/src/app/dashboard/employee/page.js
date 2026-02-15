@@ -336,6 +336,7 @@ export default function EmployeeDashboard() {
         { id: "analytics", label: "Analytics", icon: "📊" },
         { id: "invest", label: "Invest", icon: "📈" },
         { id: "ramp", label: "Off-Ramp", icon: "🏧" },
+        { id: "history", label: "History", icon: "📜" },
     ];
 
     return (
@@ -683,6 +684,67 @@ export default function EmployeeDashboard() {
                             </>
                         )}
                     </>
+                )}
+
+                {activeTab === "history" && (
+                    <div>
+                        <h3 className="text-lg font-bold mb-1" style={{ color: "var(--text-primary)" }}>Transaction History</h3>
+                        <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>All your withdrawals, bonuses, and salary events</p>
+
+                        {history.length === 0 ? (
+                            <div className="text-center py-12">
+                                <div className="text-4xl mb-4">📜</div>
+                                <p className="text-sm" style={{ color: "var(--text-muted)" }}>No transactions found.</p>
+                            </div>
+                        ) : (
+                            <div className="glass-card p-6">
+                                <div className="space-y-3">
+                                    {history.map((h, i) => (
+                                        <div key={i} className="flex justify-between items-center p-3 rounded-lg text-sm"
+                                            style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}>
+                                            <div>
+                                                <div style={{ color: "var(--text-muted)", fontSize: "10px" }}>{h.time}</div>
+                                                <div className="font-bold" style={{
+                                                    color: h.type === "Bonus" ? "var(--accent)" :
+                                                        h.type === "Create" ? "var(--text-primary)" :
+                                                            h.type === "Cancel" ? "var(--danger)" : "var(--text-primary)"
+                                                }}>
+                                                    {h.type === "Bonus" ? `🎁 ${h.reason}` :
+                                                        h.type === "Create" ? "🚀 Stream Started" :
+                                                            h.type === "Cancel" ? "🛑 Stream Cancelled" : "💸 Withdrawal"}
+                                                </div>
+                                            </div>
+
+                                            {h.type === "Bonus" ? (
+                                                <div className="text-right">
+                                                    <div className="font-bold" style={{ color: "var(--success)" }}>+{h.amount} HLUSD</div>
+                                                    <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>Auto-Deposited</div>
+                                                </div>
+                                            ) : h.type === "Create" ? (
+                                                <div className="text-right">
+                                                    <div className="font-bold" style={{ color: "var(--success)" }}>+{h.amount} HLUSD</div>
+                                                    <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>Gas Stipend</div>
+                                                </div>
+                                            ) : h.type === "Cancel" ? (
+                                                <div className="text-right">
+                                                    <div className="font-bold" style={{ color: "var(--success)" }}>+{h.amount} HLUSD</div>
+                                                    <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>Final Payout</div>
+                                                </div>
+                                            ) : (
+                                                <div className="flex gap-4 text-xs text-right">
+                                                    <div className="hidden md:block">
+                                                        <span style={{ color: "var(--text-secondary)" }}>Gross: {h.gross}</span>
+                                                        <span className="ml-2" style={{ color: "var(--danger)" }}>Tax: -{h.tax}</span>
+                                                    </div>
+                                                    <div className="font-bold" style={{ color: "var(--success)" }}>+{h.net} HLUSD</div>
+                                                </div>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </div>
                 )}
 
                 {activeTab === "ramp" && (

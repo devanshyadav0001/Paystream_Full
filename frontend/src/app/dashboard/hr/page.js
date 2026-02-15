@@ -154,7 +154,6 @@ export default function HRDashboard() {
 
             setTotalBurnRate(burn);
 
-            // Only fetch history if active tab is history
             if (activeTab === "history") {
                 fetchHistory(contract);
             }
@@ -163,6 +162,18 @@ export default function HRDashboard() {
             console.error(e);
         }
     };
+
+    // Re-fetch data when tab changes or interval ticks
+    useEffect(() => {
+        if (!signer) return;
+        loadData();
+    }, [signer, wallet, activeTab]);
+
+    useEffect(() => {
+        if (!signer) return;
+        const interval = setInterval(loadData, 10000);
+        return () => clearInterval(interval);
+    }, [signer, wallet]); // Keep interval for periodic updates (not tied to tab change)
 
     const fetchHistory = async (contract) => {
         try {
