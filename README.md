@@ -42,7 +42,7 @@ npm install
 
 ### 2. Environment Setup (Private Keys)
 
-**⚠️ IMPORTANT:** Never commit your private keys to GitHub.
+
 
 1.  Create a `.env` file in the `contracts/` directory.
 2.  Add your wallet's private key (the one you will use to deploy contracts).
