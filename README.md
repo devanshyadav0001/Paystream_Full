@@ -1,5 +1,7 @@
 # 🌊 PayStream (Reboot) on HeLa Chain
 
+**🚀 Live Demo:** [https://paystream-bc929.web.app](https://paystream-bc929.web.app)
+
 A decentralized real-time salary streaming application built on the HeLa Testnet. Employees receive their salary second-by-second and can withdraw at any time.
 
 ## ✨ Features
@@ -97,21 +99,46 @@ To use the application, you need to add the **HeLa Testnet** network to your Met
 
 ---
 
-## 📖 Usage Guide
+## 📖 User Guide: How to Get Started
 
-### HR / Admin (The Employer)
-1.  **Login**: Connect the wallet that deployed the contract (or deploy a new one via the UI).
-2.  **Dashboard**:
-    -   **Deposit**: Fund the Treasury with HLUSD.
-    -   **Create Stream**: Enter Employee Address and Monthly Salary. *The system sends 1 HLUSD to the employee as a gas stipend.*
-    -   **Monitor**: Pause/Resume streams.
+### 🏢 For HR Managers (Employers)
 
-### Employee
-1.  **Login**: Connect your wallet.
-2.  **Dashboard**:
-    -   **Earnings**: Watch your salary accrue in real-time.
-    -   **Withdraw**: Claim your salary. Tax is deducted automatically.
-    -   **Invest/Off-ramp**: Simulate investing or cashing out.
+**Step 1: Connect & Authenticate**
+1.  Open [PayStream](https://paystream-bc929.web.app).
+2.  Click **"Connect Wallet"** (Use MetaMask with HeLa Testnet).
+3.  Select **"HR / Admin"** role.
+
+**Step 2: Deploy Your Organization Contract**
+*   *First Time User?* The app will ask if you have an existing contract.
+*   Click **"No, Deploy New Contract"**.
+*   Confirm the transaction in MetaMask. (Cost: ~0.05 HLUSD).
+*   **Save your Contract Address!** (The app remembers it, but keep a copy).
+
+**Step 3: Fund & Stream**
+1.  **Fund Treasury**: Go to the **Deposit** tab and add HLUSD to your contract to cover salaries.
+2.  **Add Employee**: Go to **Create Stream**.
+    *   Enter User Wallet Address.
+    *   Set Monthly Salary (e.g., 5000 HLUSD).
+    *   Click **Create**. (This automatically sends 1 HLUSD as a *Gas Stipend* to the employee).
+
+---
+
+### 👤 For Employees
+
+**Step 1:Get Onboarded**
+*   Share your wallet address with your HR manager.
+*   Wait for them to create your stream. You will receive **1 HLUSD** automatically for gas fees.
+
+**Step 2: Access Dashboard**
+1.  Open [PayStream](https://paystream-bc929.web.app).
+2.  Click **"Connect Wallet"**.
+3.  Select **"Employee"** role.
+4.  *First Time?* Enter the **Organization Contract Address** provided by HR (or asked them to share it).
+
+**Step 3: Manage Salary**
+*   **Watch it Grow**: See your earnings increase every second.
+*   **Withdraw**: Click **"Withdraw"** to claim your accumulated HLUSD.
+*   **History**: Check the **"History"** tab for a log of all payments and bonuses.
 
 ---
 
