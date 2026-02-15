@@ -26,6 +26,7 @@ export default function EmployeeDashboard() {
     const [stream, setStream] = useState(null);
     const [accrued, setAccrued] = useState("0");
     const [displayAccrued, setDisplayAccrued] = useState(0);
+    const [bonusTotal, setBonusTotal] = useState("0.0000");
     const [status, setStatus] = useState("");
     const [history, setHistory] = useState([]);
     const [activeTab, setActiveTab] = useState("earnings");
@@ -162,8 +163,85 @@ export default function EmployeeDashboard() {
                 setStream(s);
                 const acc = await contract.getAccrued(addr);
                 const num = parseFloat(ethers.formatUnits(acc, 18));
+
+                // Fetch Bonus Total
+                const bonus = await contract.bonusReceived(addr);
+                setBonusTotal(parseFloat(ethers.formatUnits(bonus, 18)).toFixed(4));
+
                 setAccrued(num.toFixed(6));
                 setDisplayAccrued(num);
+
+                // Fetch History (Withdrawals, Bonuses, Stream Events)
+                const withdrawFilter = contract.filters.Withdraw(addr);
+                const bonusFilter = contract.filters.BonusSent(addr);
+                const cancelFilter = contract.filters.StreamCancelled(addr);
+                const createFilter = contract.filters.StreamCreated(addr);
+
+                const [withdrawLogs, bonusLogs, cancelLogs, createLogs] = await Promise.all([
+                    contract.queryFilter(withdrawFilter),
+                    contract.queryFilter(bonusFilter),
+                    contract.queryFilter(cancelFilter),
+                    contract.queryFilter(createFilter)
+                ]);
+
+                const historyItems = [];
+
+                // Process Withdrawals
+                for (const log of withdrawLogs) {
+                    const parsed = contract.interface.parseLog(log);
+                    const block = await log.getBlock();
+                    historyItems.push({
+                        type: "Withdraw",
+                        time: new Date(block.timestamp * 1000).toLocaleString(),
+                        gross: parseFloat(ethers.formatUnits(parsed.args.amount + parsed.args.tax, 18)).toFixed(4),
+                        tax: parseFloat(ethers.formatUnits(parsed.args.tax, 18)).toFixed(4),
+                        net: parseFloat(ethers.formatUnits(parsed.args.amount, 18)).toFixed(4),
+                        timestamp: block.timestamp
+                    });
+                }
+
+                // Process Bonuses
+                for (const log of bonusLogs) {
+                    const parsed = contract.interface.parseLog(log);
+                    const block = await log.getBlock();
+                    historyItems.push({
+                        type: "Bonus",
+                        time: new Date(block.timestamp * 1000).toLocaleString(),
+                        amount: parseFloat(ethers.formatUnits(parsed.args.amount, 18)).toFixed(4),
+                        reason: parsed.args.reason,
+                        timestamp: block.timestamp
+                    });
+                }
+
+                // Process Stream Cancel (Final Payout)
+                for (const log of cancelLogs) {
+                    const parsed = contract.interface.parseLog(log);
+                    const block = await log.getBlock();
+                    const payout = parseFloat(ethers.formatUnits(parsed.args.finalPayout, 18));
+                    if (payout > 0) {
+                        historyItems.push({
+                            type: "Cancel",
+                            time: new Date(block.timestamp * 1000).toLocaleString(),
+                            amount: payout.toFixed(4),
+                            timestamp: block.timestamp
+                        });
+                    }
+                }
+
+                // Process Stream Create (Gas Stipend Info)
+                for (const log of createLogs) {
+                    const block = await log.getBlock();
+                    historyItems.push({
+                        type: "Create",
+                        time: new Date(block.timestamp * 1000).toLocaleString(),
+                        amount: "1.0000", // Hardcoded known stipend
+                        timestamp: block.timestamp
+                    });
+                }
+
+                // Sort by new first
+                historyItems.sort((a, b) => b.timestamp - a.timestamp);
+                setHistory(historyItems);
             }
         } catch (e) {
             console.error(e);
@@ -371,6 +449,12 @@ export default function EmployeeDashboard() {
                                             {autoInvestPercent > 0 ? `${autoInvestPercent}%` : "Off"}
                                         </div>
                                     </div>
+                                    <div className="glass-card p-4 text-center">
+                                        <div className="text-xs mb-1" style={{ color: "var(--text-muted)" }}>Bonuses Received</div>
+                                        <div className="font-bold text-sm" style={{ color: "var(--success)" }}>
+                                            {bonusTotal} HLUSD
+                                        </div>
+                                    </div>
                                 </div>
 
                                 {/* Withdraw */}
@@ -392,12 +476,43 @@ export default function EmployeeDashboard() {
                                             {history.map((h, i) => (
                                                 <div key={i} className="flex justify-between items-center p-3 rounded-lg text-sm"
                                                     style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}>
-                                                    <span style={{ color: "var(--text-muted)" }}>{h.time}</span>
-                                                    <div className="flex gap-4 text-xs">
-                                                        <span style={{ color: "var(--text-secondary)" }}>Gross: {h.gross}</span>
-                                                        <span style={{ color: "var(--danger)" }}>Tax: -{h.tax}</span>
-                                                        <span className="font-bold" style={{ color: "var(--success)" }}>Net: {h.net}</span>
+                                                    <div>
+                                                        <div style={{ color: "var(--text-muted)", fontSize: "10px" }}>{h.time}</div>
+                                                        <div className="font-bold" style={{
+                                                            color: h.type === "Bonus" ? "var(--accent)" :
+                                                                h.type === "Create" ? "var(--text-primary)" :
+                                                                    h.type === "Cancel" ? "var(--danger)" : "var(--text-primary)"
+                                                        }}>
+                                                            {h.type === "Bonus" ? `🎁 ${h.reason}` :
+                                                                h.type === "Create" ? "🚀 Stream Started" :
+                                                                    h.type === "Cancel" ? "🛑 Stream Cancelled" : "💸 Withdrawal"}
+                                                        </div>
                                                     </div>
+
+                                                    {h.type === "Bonus" ? (
+                                                        <div className="text-right">
+                                                            <div className="font-bold" style={{ color: "var(--success)" }}>+{h.amount} HLUSD</div>
+                                                            <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>Auto-Deposited</div>
+                                                        </div>
+                                                    ) : h.type === "Create" ? (
+                                                        <div className="text-right">
+                                                            <div className="font-bold" style={{ color: "var(--success)" }}>+{h.amount} HLUSD</div>
+                                                            <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>Gas Stipend</div>
+                                                        </div>
+                                                    ) : h.type === "Cancel" ? (
+                                                        <div className="text-right">
+                                                            <div className="font-bold" style={{ color: "var(--success)" }}>+{h.amount} HLUSD</div>
+                                                            <div style={{ fontSize: "10px", color: "var(--text-muted)" }}>Final Payout</div>
+                                                        </div>
+                                                    ) : (
+                                                        <div className="flex gap-4 text-xs text-right">
+                                                            <div className="hidden md:block">
+                                                                <span style={{ color: "var(--text-secondary)" }}>Gross: {h.gross}</span>
+                                                                <span className="ml-2" style={{ color: "var(--danger)" }}>Tax: -{h.tax}</span>
+                                                            </div>
+                                                            <div className="font-bold" style={{ color: "var(--success)" }}>+{h.net} HLUSD</div>
+                                                        </div>
+                                                    )}
                                                 </div>
                                             ))}
                                         </div>
@@ -459,6 +574,7 @@ export default function EmployeeDashboard() {
                                             title="Investment Deposits"
                                             data={investHistory.slice(-8).map((h) => ({
                                                 label: h.time?.split(',')[0] || 'Deposit',
+                                                // Ensure value is parsed as float to prevent crash
                                                 value: parseFloat(h.amount),
                                                 displayValue: `${parseFloat(h.amount).toFixed(4)} HLUSD`,
                                                 color: "var(--success)",

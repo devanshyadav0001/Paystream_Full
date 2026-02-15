@@ -20,6 +20,7 @@ export default function HRDashboard() {
     const [yieldAccrued, setYieldAccrued] = useState("0");
     const [totalBonuses, setTotalBonuses] = useState("0");
     const [totalBurnRate, setTotalBurnRate] = useState(0); // Total HLUSD/sec leaving treasury
+    const [history, setHistory] = useState([]);
 
     // Real-time Treasury Deduction Effect
     useEffect(() => {
@@ -151,14 +152,80 @@ export default function HRDashboard() {
             const activeEmps = details.filter(e => e.exists);
             setEmployees(activeEmps);
 
-            // Calculate total burn rate (sum of all active stream rates)
-            const burn = activeEmps
-                .filter(e => e.active)
-                .reduce((sum, e) => sum + parseFloat(e.rate), 0);
             setTotalBurnRate(burn);
+
+            // Only fetch history if active tab is history
+            if (activeTab === "history") {
+                fetchHistory(contract);
+            }
 
         } catch (e) {
             console.error(e);
+        }
+    };
+
+    const fetchHistory = async (contract) => {
+        try {
+            const [deposits, withdrawals, bonuses, taxes] = await Promise.all([
+                contract.queryFilter(contract.filters.Deposit()),
+                contract.queryFilter(contract.filters.Withdraw()),
+                contract.queryFilter(contract.filters.BonusSent()),
+                contract.queryFilter(contract.filters.TaxWithdrawn())
+            ]);
+
+            const items = [];
+
+            for (const log of deposits) {
+                const block = await log.getBlock();
+                items.push({
+                    type: "Deposit",
+                    time: new Date(block.timestamp * 1000).toLocaleString(),
+                    amount: parseFloat(ethers.formatUnits(contract.interface.parseLog(log).args.amount, 18)).toFixed(4),
+                    sender: contract.interface.parseLog(log).args.sender,
+                    timestamp: block.timestamp
+                });
+            }
+
+            for (const log of withdrawals) {
+                const block = await log.getBlock();
+                const args = contract.interface.parseLog(log).args;
+                items.push({
+                    type: "Withdraw",
+                    time: new Date(block.timestamp * 1000).toLocaleString(),
+                    amount: parseFloat(ethers.formatUnits(args.amount, 18)).toFixed(4),
+                    tax: parseFloat(ethers.formatUnits(args.tax, 18)).toFixed(4),
+                    employee: args.employee,
+                    timestamp: block.timestamp
+                });
+            }
+
+            for (const log of bonuses) {
+                const block = await log.getBlock();
+                const args = contract.interface.parseLog(log).args;
+                items.push({
+                    type: "Bonus",
+                    time: new Date(block.timestamp * 1000).toLocaleString(),
+                    amount: parseFloat(ethers.formatUnits(args.amount, 18)).toFixed(4),
+                    reason: args.reason,
+                    employee: args.employee,
+                    timestamp: block.timestamp
+                });
+            }
+
+            for (const log of taxes) {
+                const block = await log.getBlock();
+                items.push({
+                    type: "Tax",
+                    time: new Date(block.timestamp * 1000).toLocaleString(),
+                    amount: parseFloat(ethers.formatUnits(contract.interface.parseLog(log).args.amount, 18)).toFixed(4),
+                    timestamp: block.timestamp
+                });
+            }
+
+            items.sort((a, b) => b.timestamp - a.timestamp);
+            setHistory(items);
+        } catch (e) {
+            console.error("History fetch error:", e);
         }
     };
 
@@ -270,6 +337,7 @@ export default function HRDashboard() {
         { id: "monitor", label: "Employees", icon: "👥" },
         { id: "analytics", label: "Analytics", icon: "📊" },
         { id: "tax", label: "Tax Vault", icon: "🏦" },
+        { id: "history", label: "History", icon: "📜" },
     ];
 
     return (
@@ -634,6 +702,59 @@ export default function HRDashboard() {
                                 disabled={parseFloat(taxVault) === 0}>
                                 Withdraw Tax
                             </button>
+                        </div>
+                    )}
+                    {activeTab === "history" && (
+                        <div>
+                            <h3 className="text-lg font-bold mb-1" style={{ color: "var(--text-primary)" }}>Transaction History</h3>
+                            <p className="text-sm mb-6" style={{ color: "var(--text-muted)" }}>All inflows and outflows from the contract</p>
+
+                            {history.length === 0 ? (
+                                <div className="text-center py-12">
+                                    <div className="text-4xl mb-4">📜</div>
+                                    <p className="text-sm" style={{ color: "var(--text-muted)" }}>No transactions found.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-3">
+                                    {history.map((h, i) => (
+                                        <div key={i} className="p-4 rounded-xl text-sm flex flex-col md:flex-row md:items-center justify-between gap-4"
+                                            style={{ background: "var(--bg-secondary)", border: "1px solid var(--border)" }}>
+
+                                            <div className="flex items-center gap-4">
+                                                <div className="p-2 rounded-lg text-xl" style={{
+                                                    background: h.type === "Deposit" ? "rgba(16, 185, 129, 0.1)" : "rgba(239, 68, 68, 0.1)",
+                                                    color: h.type === "Deposit" ? "var(--success)" : "var(--danger)"
+                                                }}>
+                                                    {h.type === "Deposit" ? "📥" : "📤"}
+                                                </div>
+                                                <div>
+                                                    <div className="font-bold" style={{ color: "var(--text-primary)" }}>
+                                                        {h.type === "Deposit" ? "Treasury Deposit" :
+                                                            h.type === "Withdraw" ? "Salary Withdrawal" :
+                                                                h.type === "Bonus" ? `Bonus: ${h.reason}` : "Tax Withdrawal"}
+                                                    </div>
+                                                    <div className="text-xs" style={{ color: "var(--text-muted)" }}>
+                                                        {h.time} • {h.type === "Withdraw" || h.type === "Bonus" ? `To: ${h.employee?.slice(0, 6)}...` : ""}
+                                                    </div>
+                                                </div>
+                                            </div>
+
+                                            <div className="text-right">
+                                                <div className="font-bold" style={{
+                                                    color: h.type === "Deposit" ? "var(--success)" : "var(--text-primary)"
+                                                }}>
+                                                    {h.type === "Deposit" ? "+" : "-"}{h.amount} HLUSD
+                                                </div>
+                                                {h.type === "Withdraw" && (
+                                                    <div className="text-xs" style={{ color: "var(--danger)" }}>
+                                                        Tax: {h.tax} HLUSD
+                                                    </div>
+                                                )}
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
                         </div>
                     )}
                 </div>
