@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect } from "react";
 
-export default function ThemeToggle() {
+export default function ThemeSwitcher() {
     const [mounted, setMounted] = useState(false);
     const [dark, setDark] = useState(false);
 

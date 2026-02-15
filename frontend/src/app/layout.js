@@ -1,7 +1,8 @@
-import { Inter } from "next/font/google";
+import { Inter, Playfair_Display } from "next/font/google";
 import "./globals.css";
 
 const inter = Inter({ subsets: ["latin"] });
+const playfair = Playfair_Display({ subsets: ["latin"], variable: "--font-serif" });
 
 export const metadata = {
     title: "PayStream - Salary Streaming",
@@ -9,21 +10,10 @@ export const metadata = {
 };
 
 export default function RootLayout({ children }) {
+    console.log("Rendering RootLayout");
     return (
-        <html lang="en" suppressHydrationWarning>
-            <head>
-                <script dangerouslySetInnerHTML={{
-                    __html: `
-                        (function() {
-                            try {
-                                var t = localStorage.getItem('paystream-theme');
-                                if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
-                            } catch(e) {}
-                        })();
-                    `
-                }} />
-            </head>
-            <body className={inter.className}>{children}</body>
+        <html lang="en">
+            <body className={`${inter.className} ${playfair.variable}`}>{children}</body>
         </html>
     );
 }

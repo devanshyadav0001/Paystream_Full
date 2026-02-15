@@ -11,6 +11,7 @@ export default function HRDashboard() {
     const router = useRouter();
     const [wallet, setWallet] = useState("");
     const [signer, setSigner] = useState(null);
+    const [orgAddress, setOrgAddress] = useState("");
     const [treasuryBalance, setTreasuryBalance] = useState("0");
     const [taxVault, setTaxVault] = useState("0");
     const [employees, setEmployees] = useState([]);
@@ -18,6 +19,22 @@ export default function HRDashboard() {
     const [activeTab, setActiveTab] = useState("deposit");
     const [yieldAccrued, setYieldAccrued] = useState("0");
     const [totalBonuses, setTotalBonuses] = useState("0");
+    const [totalBurnRate, setTotalBurnRate] = useState(0); // Total HLUSD/sec leaving treasury
+
+    // Real-time Treasury Deduction Effect
+    useEffect(() => {
+        if (!treasuryBalance || totalBurnRate === 0) return;
+
+        let currentBalance = parseFloat(treasuryBalance);
+        const interval = setInterval(() => {
+            // Deduct burn rate every 100ms
+            currentBalance -= (totalBurnRate / 10);
+            if (currentBalance < 0) currentBalance = 0;
+            setTreasuryBalance(currentBalance.toFixed(4));
+        }, 100);
+
+        return () => clearInterval(interval);
+    }, [totalBurnRate]); // Re-run when burn rate changes (e.g. new stream added)
 
     // Form states
     const [depositAmount, setDepositAmount] = useState("");
@@ -43,20 +60,22 @@ export default function HRDashboard() {
         }
     };
 
-    useEffect(() => { connect(); }, []);
+    useEffect(() => {
+        const storedOrg = localStorage.getItem("paystream_org");
+        if (!storedOrg) {
+            router.push("/dashboard");
+            return;
+        }
+        setOrgAddress(storedOrg);
+        connect();
+    }, []);
 
     // Listen for account changes
     useEffect(() => {
         if (!window.ethereum) return;
-        const handleAccountsChanged = async (accounts) => {
-            if (accounts.length === 0) {
-                router.push("/dashboard");
-            } else {
-                const provider = new ethers.BrowserProvider(window.ethereum);
-                const s = await provider.getSigner();
-                setSigner(s);
-                setWallet(await s.getAddress());
-            }
+        const handleAccountsChanged = (accounts) => {
+            // Force redirect to main dashboard to reset state and role selection
+            router.push("/dashboard");
         };
         window.ethereum.on("accountsChanged", handleAccountsChanged);
         return () => window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
@@ -88,15 +107,32 @@ export default function HRDashboard() {
 
     const loadData = async () => {
         try {
-            const contract = getContract(signer);
+            if (!orgAddress || !signer) return;
+            const contract = getContract(signer, orgAddress);
+
+            // Security Check: Is the current user the owner?
+            // If not, redirect immediately.
+            const owner = await contract.owner();
+            const currentAddress = await signer.getAddress();
+            if (owner.toLowerCase() !== currentAddress.toLowerCase()) {
+                router.push("/dashboard"); // Redirect unauthorized users
+                return;
+            }
+
             const treasury = await contract.treasuryBalance();
             const tax = await contract.taxVaultBalance();
             const yieldVal = await contract.getYieldAccrued();
             const bonusTotal = await contract.totalBonusesPaid();
+
+            // We set treasury balance here, but the useEffect below will animate it down
+            // based on active streams to show real-time spending.
             setTreasuryBalance(formatHLUSD(treasury));
+
             setTaxVault(formatHLUSD(tax));
             setYieldAccrued(formatHLUSD(yieldVal));
             setTotalBonuses(formatHLUSD(bonusTotal));
+
+            // ... (rest of function)
 
             const empList = await contract.getAllEmployees();
             const details = await Promise.all(empList.map(async (addr) => {
@@ -111,7 +147,16 @@ export default function HRDashboard() {
                     accrued: formatHLUSD(accrued),
                 };
             }));
-            setEmployees(details.filter(e => e.exists));
+
+            const activeEmps = details.filter(e => e.exists);
+            setEmployees(activeEmps);
+
+            // Calculate total burn rate (sum of all active stream rates)
+            const burn = activeEmps
+                .filter(e => e.active)
+                .reduce((sum, e) => sum + parseFloat(e.rate), 0);
+            setTotalBurnRate(burn);
+
         } catch (e) {
             console.error(e);
         }
@@ -127,7 +172,7 @@ export default function HRDashboard() {
         if (!depositAmount || !signer) return;
         try {
             showStatus("Depositing HLUSD to treasury...");
-            const contract = getContract(signer);
+            const contract = getContract(signer, orgAddress);
             const amount = parseHLUSD(depositAmount);
             const tx = await contract.deposit({ value: amount });
             await tx.wait();
@@ -143,11 +188,13 @@ export default function HRDashboard() {
         if (!empAddress || !empRate || !signer) return;
         try {
             showStatus("Creating stream...");
-            const contract = getContract(signer);
+            const contract = getContract(signer, orgAddress);
             const ratePerSec = parseHLUSD((parseFloat(empRate) / (30 * 24 * 3600)).toFixed(18));
-            const tx = await contract.createStream(empAddress, ratePerSec, parseInt(empTax));
+            // GAS STIPEND: Send 1 HLUSD to employee for gas fees
+            const gasStipend = parseHLUSD("1");
+            const tx = await contract.createStream(empAddress, ratePerSec, parseInt(empTax), { value: gasStipend });
             await tx.wait();
-            showStatus("✅ Stream created!");
+            showStatus("✅ Stream created & Gas Stipend sent!");
             setEmpAddress(""); setEmpRate(""); setEmpTax("10");
             loadData();
         } catch (e) {
@@ -158,7 +205,7 @@ export default function HRDashboard() {
     const handlePause = async (addr) => {
         try {
             showStatus("Pausing...");
-            const contract = getContract(signer);
+            const contract = getContract(signer, orgAddress);
             const tx = await contract.pauseStream(addr);
             await tx.wait();
             showStatus("✅ Paused"); loadData();
@@ -168,7 +215,7 @@ export default function HRDashboard() {
     const handleResume = async (addr) => {
         try {
             showStatus("Resuming...");
-            const contract = getContract(signer);
+            const contract = getContract(signer, orgAddress);
             const tx = await contract.resumeStream(addr);
             await tx.wait();
             showStatus("✅ Resumed"); loadData();
@@ -179,7 +226,7 @@ export default function HRDashboard() {
         if (!confirm(`Cancel stream for ${addr}?`)) return;
         try {
             showStatus("Cancelling...");
-            const contract = getContract(signer);
+            const contract = getContract(signer, orgAddress);
             const tx = await contract.cancelStream(addr);
             await tx.wait();
             showStatus("✅ Cancelled"); loadData();
@@ -187,9 +234,13 @@ export default function HRDashboard() {
     };
 
     const handleWithdrawTax = async () => {
+        if (parseFloat(taxVault) === 0) {
+            showStatus("⚠️ No tax to withdraw!");
+            return;
+        }
         try {
             showStatus("Withdrawing tax...");
-            const contract = getContract(signer);
+            const contract = getContract(signer, orgAddress);
             const tx = await contract.withdrawTax();
             await tx.wait();
             showStatus("✅ Tax withdrawn!"); loadData();
@@ -200,7 +251,7 @@ export default function HRDashboard() {
         if (!bonusAddress || !bonusAmount || !signer) return;
         try {
             showStatus("Sending bonus...");
-            const contract = getContract(signer);
+            const contract = getContract(signer, orgAddress);
             const amount = parseHLUSD(bonusAmount);
             const tx = await contract.sendBonus(bonusAddress, amount, bonusReason || "Performance Bonus");
             await tx.wait();
@@ -242,6 +293,19 @@ export default function HRDashboard() {
                             <span style={{ fontSize: "10px" }}>🔄</span>
                         </button>
                         <button
+                            onClick={() => {
+                                if (confirm("Disconnect current contract?")) {
+                                    localStorage.removeItem("paystream_org");
+                                    router.push("/dashboard");
+                                }
+                            }}
+                            className="px-3 py-1.5 text-xs rounded-lg font-medium transition-all"
+                            style={{ background: "rgba(255, 255, 255, 0.1)", color: "var(--text-secondary)", border: "1px solid var(--border)" }}
+                            title="Disconnect Contract"
+                        >
+                            Change Contract
+                        </button>
+                        <button
                             onClick={handleLogout}
                             className="px-3 py-1.5 text-xs rounded-lg font-medium transition-all"
                             style={{ background: "var(--danger-light)", color: "var(--danger)", border: "1px solid var(--danger)" }}
@@ -259,6 +323,9 @@ export default function HRDashboard() {
                         {status}
                     </div>
                 )}
+
+
+
 
                 {/* Stats Row */}
                 <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-8">

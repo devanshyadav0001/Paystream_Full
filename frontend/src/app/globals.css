@@ -141,3 +141,15 @@ body {
 .animate-pulse-slow {
   animation: pulse-slow 2s ease-in-out infinite;
 }
+
+/* Responsive grid for features */
+@media (max-width: 768px) {
+  section>div[style*="grid-template-columns: repeat(3"] {
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Nav link hover */
+nav a:hover {
+  color: var(--accent) !important;
+}

@@ -2,23 +2,19 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ethers } from "ethers";
-import { getContract, ensureHelaNetwork, addHelaNetwork } from "@/utils/contract";
+import { getContract, ensureHelaNetwork, addHelaNetwork, createOrganization, getUserOrganizations } from "@/utils/contract";
 import ThemeToggle from "@/components/ThemeToggle";
 import Link from "next/link";
 
 export default function Dashboard() {
     const router = useRouter();
     const [connecting, setConnecting] = useState(false);
-    const [selectedRole, setSelectedRole] = useState(null);
 
     const connectAndRoute = async (role) => {
-        setSelectedRole(role);
         setConnecting(true);
-
         if (typeof window.ethereum === "undefined") {
             alert("Please install MetaMask or HeLa Wallet!");
             setConnecting(false);
-            setSelectedRole(null);
             return;
         }
         try {
@@ -26,28 +22,67 @@ export default function Dashboard() {
             await window.ethereum.request({ method: "eth_requestAccounts" });
             const provider = new ethers.BrowserProvider(window.ethereum);
             const signer = await provider.getSigner();
-            const address = await signer.getAddress();
+            const userAddress = await signer.getAddress();
+
+            // 1. Get Contract Address
+            let contractAddress = localStorage.getItem("paystream_master") || localStorage.getItem("paystream_org");
 
             if (role === "hr") {
-                try {
-                    const contract = getContract(provider);
-                    const owner = await contract.owner();
-                    if (owner.toLowerCase() !== address.toLowerCase()) {
-                        console.warn("Connected wallet is not the contract owner");
+                if (!contractAddress) {
+                    const deployNew = confirm("No Contract Found. Deploy a new PayStream Contract?");
+                    if (deployNew) {
+                        try {
+                            const newAddress = await createOrganization(signer);
+                            if (newAddress) {
+                                localStorage.setItem("paystream_master", newAddress);
+                                localStorage.setItem("paystream_org", newAddress);
+                                router.push("/dashboard/hr");
+                                return;
+                            }
+                        } catch (e) {
+                            alert("Deployment failed: " + e.message);
+                            setConnecting(false);
+                            return;
+                        }
+                    } else {
+                        setConnecting(false);
+                        return;
                     }
-                } catch (e) {
-                    console.log("Could not verify owner, proceeding anyway");
+                } else {
+                    // Check ownership for HR
+                    try {
+                        const contract = getContract(signer, contractAddress);
+                        const owner = await contract.owner();
+                        if (owner.toLowerCase() !== userAddress.toLowerCase()) {
+                            alert("You are not the owner of the current contract!");
+                            setConnecting(false);
+                            return;
+                        }
+                    } catch (e) {
+                        console.error("Owner check failed", e);
+                    }
+                    localStorage.setItem("paystream_org", contractAddress);
+                    router.push("/dashboard/hr");
                 }
-                router.push("/dashboard/hr");
             } else {
+                // Employee Flow
+                if (!contractAddress) {
+                    contractAddress = prompt("Enter Company Contract Address:");
+                    if (!contractAddress || !ethers.isAddress(contractAddress)) {
+                        alert("Invalid address");
+                        setConnecting(false);
+                        return;
+                    }
+                }
+                localStorage.setItem("paystream_org", contractAddress);
                 router.push("/dashboard/employee");
             }
+
         } catch (err) {
             console.error(err);
-            alert("Failed to connect wallet. Make sure you're on HeLa Testnet.");
+            alert("Connection failed.");
         } finally {
             setConnecting(false);
-            setSelectedRole(null);
         }
     };
 
@@ -117,11 +152,7 @@ export default function Dashboard() {
                         Manage treasury, create salary streams, handle taxes and bonuses
                     </p>
                     <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: "var(--accent)" }}>
-                        {connecting && selectedRole === "hr" ? (
-                            <>⏳ Connecting...</>
-                        ) : (
-                            <>Connect as HR →</>
-                        )}
+                        {connecting ? "Connecting..." : "Connect as HR →"}
                     </div>
                 </button>
 
@@ -138,11 +169,7 @@ export default function Dashboard() {
                         View earnings, withdraw salary, track investments and analytics
                     </p>
                     <div className="flex items-center gap-2 text-sm font-semibold" style={{ color: "var(--accent)" }}>
-                        {connecting && selectedRole === "employee" ? (
-                            <>⏳ Connecting...</>
-                        ) : (
-                            <>Connect as Employee →</>
-                        )}
+                        {connecting ? "Connecting..." : "Connect as Employee →"}
                     </div>
                 </button>
             </div>

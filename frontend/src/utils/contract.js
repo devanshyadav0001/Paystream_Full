@@ -1,12 +1,15 @@
 import { ethers } from "ethers";
 import PayStreamABI from "../hooks/PayStream.json";
+import PayStreamFactoryABI from "../hooks/PayStreamFactory.json";
 
 // ─── PayStream on HeLa Testnet ───
-export const CONTRACT_ADDRESS = "0x4C2F7092C2aE51D986bEFEe378e50BD4dB99C901";
+// ─── PayStream on HeLa Testnet ───
+export const CONTRACT_ADDRESS = ""; // Default/Legacy
+export const FACTORY_ADDRESS = ""; // Update after factory deployment
 
 // ─── HeLa Testnet Chain Config ───
 export const HELA_TESTNET = {
-    chainId: "0xA30F8",           // 666888 in hex
+    chainId: "0xA2D08",           // 666888 in hex
     chainName: "HeLa Testnet",
     rpcUrls: ["https://testnet-rpc.helachain.com"],
     blockExplorerUrls: ["https://testnet-blockexplorer.helachain.com"],
@@ -23,7 +26,7 @@ export const addHelaNetwork = async () => {
     try {
         await window.ethereum.request({
             method: "wallet_addEthereumChain",
-            params: [HELA_TESTNET],
+            params: [HELA_TESTNET], // Using precise configuration defined above
         });
         return true;
     } catch (err) {
@@ -67,8 +70,59 @@ export const isOnHelaNetwork = async () => {
     return chainId.toLowerCase() === HELA_TESTNET.chainId.toLowerCase();
 };
 
-export const getContract = (signerOrProvider) => {
-    return new ethers.Contract(CONTRACT_ADDRESS, PayStreamABI.abi, signerOrProvider);
+export const getContract = (signerOrProvider, address = CONTRACT_ADDRESS) => {
+    return new ethers.Contract(address, PayStreamABI.abi, signerOrProvider);
+};
+
+export const getFactoryContract = (signerOrProvider) => {
+    return new ethers.Contract(FACTORY_ADDRESS, PayStreamFactoryABI.abi, signerOrProvider);
+};
+
+export const createOrganization = async (signer) => {
+    try {
+        const owner = await signer.getAddress();
+        const factory = new ethers.ContractFactory(PayStreamABI.abi, PayStreamABI.bytecode, signer);
+        // Deploys PayStream and sets signer as initial owner
+        const contract = await factory.deploy(owner, {});
+        await contract.waitForDeployment();
+        const address = contract.target;
+        console.log("Deployed PayStream at:", address);
+        return address;
+    } catch (error) {
+        console.error("Deployment failed:", error);
+        throw error;
+    }
+};
+
+export const getUserOrganizations = async (signerOrProvider, userAddress) => {
+    // For MVP without backend factory, we rely on local storage
+    if (typeof window !== "undefined") {
+        const stored = localStorage.getItem("paystream_org");
+        return stored ? [stored] : [];
+    }
+    return [];
+};
+
+// Check if current user is owner
+export const isOwner = async (signerOrProvider, contractAddress, userAddress) => {
+    try {
+        const contract = getContract(signerOrProvider, contractAddress);
+        const owner = await contract.owner();
+        return owner.toLowerCase() === userAddress.toLowerCase();
+    } catch (e) {
+        console.error("Failed to check owner:", e);
+        return false;
+    }
+};
+
+export const getOwner = async (signerOrProvider, contractAddress) => {
+    try {
+        const contract = getContract(signerOrProvider, contractAddress);
+        return await contract.owner();
+    } catch (e) {
+        console.error("Failed to get owner:", e);
+        return null;
+    }
 };
 
 export const formatHLUSD = (amount) => {

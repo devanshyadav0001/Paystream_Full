@@ -22,6 +22,7 @@ export default function EmployeeDashboard() {
     const router = useRouter();
     const [wallet, setWallet] = useState("");
     const [signer, setSigner] = useState(null);
+    const [orgAddress, setOrgAddress] = useState("");
     const [stream, setStream] = useState(null);
     const [accrued, setAccrued] = useState("0");
     const [displayAccrued, setDisplayAccrued] = useState(0);
@@ -77,22 +78,22 @@ export default function EmployeeDashboard() {
         }
     };
 
-    useEffect(() => { connect(); }, []);
+    useEffect(() => {
+        const storedOrg = localStorage.getItem("paystream_org");
+        if (!storedOrg) {
+            router.push("/dashboard");
+            return;
+        }
+        setOrgAddress(storedOrg);
+        connect();
+    }, []);
 
     // Listen for account changes
     useEffect(() => {
         if (!window.ethereum) return;
-        const handleAccountsChanged = async (accounts) => {
-            if (accounts.length === 0) {
-                router.push("/dashboard");
-            } else {
-                const provider = new ethers.BrowserProvider(window.ethereum);
-                const s = await provider.getSigner();
-                setSigner(s);
-                setWallet(await s.getAddress());
-                setStream(null);
-                setDisplayAccrued(0);
-            }
+        const handleAccountsChanged = (accounts) => {
+            // Force redirect to main dashboard to reset state and role selection
+            router.push("/dashboard");
         };
         window.ethereum.on("accountsChanged", handleAccountsChanged);
         return () => window.ethereum.removeListener("accountsChanged", handleAccountsChanged);
@@ -143,8 +144,19 @@ export default function EmployeeDashboard() {
 
     const loadStream = async () => {
         try {
-            const contract = getContract(signer);
+            if (!orgAddress) return;
+            const contract = getContract(signer, orgAddress);
             const addr = await signer.getAddress();
+
+            // Check if user is actually the owner (HR)
+            try {
+                const owner = await contract.owner();
+                if (owner.toLowerCase() === addr.toLowerCase()) {
+                    setStatus("⚠️ Warning: You are connected as the HR Admin/Owner. You cannot have a salary stream.");
+                    return;
+                }
+            } catch (e) { console.error("Owner check failed", e); }
+
             const s = await contract.streams(addr);
             if (s.exists) {
                 setStream(s);
@@ -161,7 +173,7 @@ export default function EmployeeDashboard() {
     const handleWithdraw = async () => {
         try {
             setStatus("Withdrawing...");
-            const contract = getContract(signer);
+            const contract = getContract(signer, orgAddress);
             const tx = await contract.withdraw();
             const receipt = await tx.wait();
 
@@ -447,8 +459,8 @@ export default function EmployeeDashboard() {
                                             title="Investment Deposits"
                                             data={investHistory.slice(-8).map((h) => ({
                                                 label: h.time?.split(',')[0] || 'Deposit',
-                                                value: h.amount,
-                                                displayValue: `${h.amount.toFixed(4)} HLUSD`,
+                                                value: parseFloat(h.amount),
+                                                displayValue: `${parseFloat(h.amount).toFixed(4)} HLUSD`,
                                                 color: "var(--success)",
                                             }))}
                                         />
